@@ -11,19 +11,35 @@ class RAGGenerator:
         self.model_name = model_name
     
     def generate(self, query: str, retrieved_data: 'pd.DataFrame') -> str:
-        """Generate response based on retrieved context."""
+        """Generate optimized response with 3-5 diseases and 4 suggestions."""
         context = "\n".join(
-            [f"Symptoms: {row.symptom_text} -> Disease: {row.prognosis}" 
+            [f"- {row.symptom_text} → {row.prognosis}" 
              for _, row in retrieved_data.iterrows()]
         )
         
-        prompt = f"""User symptoms: {query}
+        prompt = f"""Based on these symptoms: "{query}"
 
-Relevant medical data:
+Relevant cases:
 {context}
 
-Based on this, suggest possible diseases.
-Do NOT give a final diagnosis. Be cautious. Recommend seeking professional medical advice.
+Respond in exactly this format (no markdown, no asterisks):
+
+[One short sentence about the symptoms]
+
+Possible Conditions:
+- disease 1
+- disease 2
+- disease 3
+- disease 4
+- disease 5 (if applicable)
+
+What to Do:
+1. Rest and stay hydrated
+2. Monitor your symptoms
+3. Consult a doctor if symptoms persist
+4. Avoid self-medication
+
+This is not a medical diagnosis.
 """
         
         response = self.client.models.generate_content(
@@ -37,12 +53,11 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
     from vector_store import VectorStore
-    from data_preprocessing import load_and_prepare_data
     
     store = VectorStore()
     store.load_index()
     
     generator = RAGGenerator()
-    results = store.retrieve("headache fever cough", k=5)
+    results = store.retrieve("headache fever cough", k=8)
     answer = generator.generate("headache fever cough", results)
     print(answer)
