@@ -11,27 +11,32 @@ class RAGGenerator:
         self.model_name = model_name
     
     def generate(self, query: str, retrieved_data: 'pd.DataFrame') -> str:
-        """Generate optimized response with 3-5 diseases and 4 suggestions."""
+        """Generate complete response from AI."""
         context = "\n".join(
             [f"- {row.symptom_text} → {row.prognosis}" 
              for _, row in retrieved_data.iterrows()]
         )
         
-        prompt = f"""Based on these symptoms: "{query}"
+        prompt = f"""User's symptoms: "{query}"
 
-Relevant cases:
+Based on the following medical data:
 {context}
 
-Respond in exactly this format (no markdown, no asterisks):
+Provide a complete response with:
+1. A brief explanation of what these symptoms might indicate
+2. List of 5 possible conditions based on the data above
+3. 4 actionable suggestions
+4. A disclaimer that this is not a medical diagnosis
 
-[One short sentence about the symptoms]
+Format (no markdown, no asterisks):
+[Explanation paragraph]
 
 Possible Conditions:
-- disease 1
-- disease 2
-- disease 3
-- disease 4
-- disease 5 (if applicable)
+- condition 1
+- condition 2
+- condition 3
+- condition 4
+- condition 5
 
 What to Do:
 1. Rest and stay hydrated
@@ -39,8 +44,7 @@ What to Do:
 3. Consult a doctor if symptoms persist
 4. Avoid self-medication
 
-This is not a medical diagnosis.
-"""
+This is not a medical diagnosis. Seek professional medical advice."""
         
         response = self.client.models.generate_content(
             model=self.model_name,

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sys
 import os
+import re
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -22,6 +23,51 @@ app.add_middleware(
 store = None
 generator = None
 
+GREETINGS = ['hi', 'hello', 'hey', 'good morning', 'good evening', 'good afternoon', 'hi there', 'hello there', 'greetings', 'howdy', 'yo']
+NON_MEDICAL_KEYWORDS = ['weather', 'news', 'sports', 'music', 'movie', 'game', 'joke', 'fact', 'age', 'birthday', 'love', 'color', 'food', 'recipe', 'travel', 'politics', 'stock', 'crypto', 'sport', 'calculator', 'math', 'sum', 'plus', 'minus', 'what time', 'date today']
+
+def is_greeting(message: str) -> bool:
+    msg_lower = message.lower().strip()
+    # Only match if it's exactly a greeting or followed by whitespace/punctuation
+    for g in GREETINGS:
+        if msg_lower == g or re.match(r'^' + re.escape(g) + r'[\s,!?.\s]*$', msg_lower):
+            return True
+    return False
+
+def is_medical_related(message: str) -> bool:
+    msg_lower = message.lower()
+    # First check for greeting
+    if is_greeting(message):
+        return False
+    # Non-medical keywords - immediately reject
+    non_medical = ['weather', 'news', 'sports', 'music', 'movie', 'game', 'joke', 'fact', 'age', 'birthday', 'love', 'color', 'food', 'recipe', 'travel', 'politics', 'stock', 'crypto', 'sport', 'calculator', 'math', 'sum', 'plus', 'minus', 'what time', 'date', 'how are', 'who are', 'what is your', 'tell me about', 'calculate', 'definition', 'meaning of', 'help me']
+    for keyword in non_medical:
+        if keyword in msg_lower:
+            return False
+    # Medical indicators - if found, treat as medical
+    medical_patterns = ['symptom', 'pain', 'hurt', 'ache', 'fever', 'cough', 'sick', 'doctor', 'medicine', 'health', 'feeling', 'body', 'head', 'stomach', 'chest', 'back', 'headache', 'nausea', 'dizzy', 'tired', 'weak', 'swelling', 'rash', 'infection', 'cold', 'flu', 'virus', 'bacteria', 'disease', 'diagnosis', 'prescription', 'treatment', 'remedy', 'high fever', 'severe', 'vomit', 'diarrhea', 'rash', 'loss of appetite', 'abrupt onset', 'behind the eyes', 'poop', 'stool', 'bowel', 'bleeding', 'blood', 'constipation', 'stomach pain', 'abdominal', 'throat', 'ear', 'skin', 'eye', 'joint', 'bone', 'muscle', 'breathing', 'breath', 'heart', 'chest pain', 'palpitation', 'anxiety', 'depression', 'sleep', 'insomnia', 'weight', 'appetite', 'urinate', 'urine', 'menstrual', 'period']
+    for pattern in medical_patterns:
+        if pattern in msg_lower:
+            return True
+    # Default - ask for more info
+    return False
+
+def get_greeting_response() -> str:
+    return """🩺 Hello! I'm Dr. AI, your medical symptom assistant.
+
+I can help you understand possible conditions based on your symptoms. Just describe what you're feeling (e.g., "headache, fever, cough") and I'll suggest possible causes.
+
+Remember: This is for educational purposes only. Always consult a doctor for proper diagnosis.
+
+How can I help you today?"""
+
+def get_non_medical_response() -> str:
+    return """I'm specialized in helping with medical symptoms and health-related queries only. 
+
+Please describe your symptoms (e.g., "headache, fever, cough") and I'll be happy to help suggest possible conditions.
+
+🩺 How are you feeling today?"""
+
 def get_services():
     global store, generator
     if store is None:
@@ -35,9 +81,20 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    message = req.message.strip()
+    
+    # Handle greetings
+    if is_greeting(message):
+        return {"response": get_greeting_response()}
+    
+    # Check if medical related
+    if not is_medical_related(message):
+        return {"response": get_non_medical_response()}
+    
+    # Process medical query
     store, generator = get_services()
-    results = store.retrieve(req.message, k=5)
-    response = generator.generate(req.message, results)
+    results = store.retrieve(message, k=8)
+    response = generator.generate(message, results)
     return {"response": response}
 
 @app.get("/api/health")
