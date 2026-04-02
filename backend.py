@@ -4,6 +4,14 @@ from pydantic import BaseModel
 import sys
 import os
 import re
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -82,37 +90,59 @@ class ChatRequest(BaseModel):
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     message = req.message.strip()
+    logger.info(f"User input: {message}")
     
     # Handle greetings
     if is_greeting(message):
+        logger.info("Detected greeting - returning greeting response")
         return {"response": get_greeting_response()}
     
     # Check if medical related
     if not is_medical_related(message):
+        logger.info("Non-medical query detected - returning redirect response")
         return {"response": get_non_medical_response()}
     
     # Process medical query with error handling
     try:
         store, generator = get_services()
+        
+        # Retrieve relevant data from vector store
+        logger.info(f"Retrieving relevant medical data for: {message}")
         results = store.retrieve(message, k=8)
+        
+        # Log retrieved sources
+        logger.info(f"Retrieved {len(results)} relevant medical records:")
+        for idx, row in results.iterrows():
+            logger.info(f"  - Symptoms: {row['symptom_text'][:80]}... -> Disease: {row['prognosis']}")
+        
+        # Generate response using retrieved data
+        logger.info("Generating AI response from retrieved medical data...")
         response = generator.generate(message, results)
+        
+        logger.info(f"Response generated successfully ({len(response)} chars)")
         return {"response": response}
+        
     except Exception as e:
         error_msg = str(e).lower()
+        logger.error(f"Error processing request: {error_msg}")
         
         # Handle API quota exceeded
-        if 'quota' in error_msg or 'rate limit' in error_msg or 'exceeded' in error_msg or 'resource_exhausted' in error_msg:
-            return {"response": "⚠️ Our AI service is currently busy. Please try again in a few moments. In the meantime, please consult a medical professional for urgent concerns."}
+        if 'quota' in error_msg or 'rate limit' in error_msg or 'exceeded' in error_msg or 'resource_exhausted' in error_msg or '503' in error_msg or 'unavailable' in error_msg or 'high demand' in error_msg:
+            logger.warning("API quota/service unavailable - high demand")
+            return {"response": "⚠️ Our AI service is currently experiencing high demand. Please try again in a few moments. For urgent medical concerns, please consult a healthcare professional."}
         
         # Handle API key issues
         if 'api_key' in error_msg or 'authentication' in error_msg or 'unauthorized' in error_msg:
+            logger.warning("API key/authentication error")
             return {"response": "⚠️ Service temporarily unavailable. Please contact support. For immediate medical concerns, please consult a healthcare professional."}
         
         # Handle network/connection errors
         if 'connection' in error_msg or 'timeout' in error_msg or 'network' in error_msg or 'httpx' in error_msg:
+            logger.warning("Network/connection error")
             return {"response": "⚠️ Unable to connect to the AI service. Please check your internet connection and try again. For medical concerns, please consult a doctor."}
         
         # Handle other errors - generic friendly message
+        logger.error(f"Unexpected error: {error_msg}")
         return {"response": "⚠️ Something went wrong while processing your request. Please try again. If the problem persists, please consult a medical professional for assistance."}
 
 @app.get("/api/health")
