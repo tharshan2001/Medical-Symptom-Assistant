@@ -91,11 +91,29 @@ async def chat(req: ChatRequest):
     if not is_medical_related(message):
         return {"response": get_non_medical_response()}
     
-    # Process medical query
-    store, generator = get_services()
-    results = store.retrieve(message, k=8)
-    response = generator.generate(message, results)
-    return {"response": response}
+    # Process medical query with error handling
+    try:
+        store, generator = get_services()
+        results = store.retrieve(message, k=8)
+        response = generator.generate(message, results)
+        return {"response": response}
+    except Exception as e:
+        error_msg = str(e).lower()
+        
+        # Handle API quota exceeded
+        if 'quota' in error_msg or 'rate limit' in error_msg or 'exceeded' in error_msg or 'resource_exhausted' in error_msg:
+            return {"response": "⚠️ Our AI service is currently busy. Please try again in a few moments. In the meantime, please consult a medical professional for urgent concerns."}
+        
+        # Handle API key issues
+        if 'api_key' in error_msg or 'authentication' in error_msg or 'unauthorized' in error_msg:
+            return {"response": "⚠️ Service temporarily unavailable. Please contact support. For immediate medical concerns, please consult a healthcare professional."}
+        
+        # Handle network/connection errors
+        if 'connection' in error_msg or 'timeout' in error_msg or 'network' in error_msg or 'httpx' in error_msg:
+            return {"response": "⚠️ Unable to connect to the AI service. Please check your internet connection and try again. For medical concerns, please consult a doctor."}
+        
+        # Handle other errors - generic friendly message
+        return {"response": "⚠️ Something went wrong while processing your request. Please try again. If the problem persists, please consult a medical professional for assistance."}
 
 @app.get("/api/health")
 def health():
